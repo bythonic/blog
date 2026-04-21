@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Post Editor</title>
+  <link rel="stylesheet" href="../assets/css/style.css">
+  <style>
+    body { overflow: hidden; }
+    .editor-page { display: flex; flex-direction: column; height: 100vh; }
+
+    .editor-topbar {
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .editor-main {
+      flex: 1;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      padding: 16px 24px;
+      gap: 12px;
+    }
+
+    .editor-meta {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+
+    .editor-meta-full {
+      grid-column: 1 / -1;
+    }
+
+    .editor-body {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      overflow: hidden;
+    }
+
+    .editor-body textarea {
+      height: 100%;
+      font-family: 'SF Mono', 'Fira Code', 'Menlo', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      resize: none;
+    }
+
+    .preview-box {
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      padding: 14px 16px;
+      overflow-y: auto;
+      font-size: 14px;
+      line-height: 1.75;
+    }
+
+    /* 미리보기에도 마크다운 스타일 적용 */
+    .preview-box h1,.preview-box h2,.preview-box h3,.preview-box h4 {
+      font-weight:700; letter-spacing:-.3px; margin:28px 0 10px; line-height:1.3;
+    }
+    .preview-box h2 { border-bottom:1px solid var(--border); padding-bottom:6px; }
+    .preview-box p  { margin-bottom:14px; }
+    .preview-box ul,.preview-box ol { padding-left:22px; margin-bottom:14px; }
+    .preview-box code {
+      font-family:'SF Mono','Menlo',monospace; font-size:.85em;
+      background:var(--surface); padding:2px 5px; border-radius:3px;
+    }
+    .preview-box pre {
+      background:var(--surface); border:1px solid var(--border);
+      border-radius:3px; padding:14px; overflow-x:auto; margin-bottom:14px;
+    }
+    .preview-box pre code { background:none; padding:0; }
+    .preview-box blockquote {
+      border-left:3px solid var(--fg); padding-left:14px;
+      margin:14px 0; color:var(--muted);
+    }
+    .preview-box a  { text-decoration:underline; }
+    .preview-box hr { border:none; border-top:1px solid var(--border); margin:28px 0; }
+
+    @media (max-width:640px) {
+      body { overflow:auto; }
+      .editor-main { overflow:auto; }
+      .editor-body { grid-template-columns:1fr; }
+      .preview-box { display:none; }
+      .editor-meta { grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="editor-page">
+    <!-- 상단 바 -->
+    <div class="editor-topbar">
+      <div class="flex-row gap-3">
+        <a href="index.html" class="btn btn-ghost btn-sm">← 대시보드</a>
+        <span id="editorLabel" style="font-size:13px; color:var(--muted);">새 포스트</span>
+      </div>
+      <div class="flex-row gap-2">
+        <span id="saveStatus" style="font-size:12px; color:var(--muted);"></span>
+        <div id="msg"></div>
+        <button class="btn btn-outline btn-sm" onclick="save(false)" id="draftBtn">임시저장</button>
+        <button class="btn btn-primary btn-sm" onclick="save(true)" id="publishBtn">발행</button>
+      </div>
+    </div>
+
+    <!-- 에디터 본문 -->
+    <div class="editor-main">
+      <!-- 메타 필드 -->
+      <div class="editor-meta">
+        <div class="form-group" style="margin:0;">
+          <label for="fTitle">제목</label>
+          <input type="text" id="fTitle" placeholder="포스트 제목" oninput="onTitleInput()">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label for="fSlug">슬러그</label>
+          <input type="text" id="fSlug" placeholder="post-slug">
+        </div>
+        <div class="form-group editor-meta-full" style="margin:0;">
+          <label for="fSummary">요약 <span style="font-weight:400; text-transform:none;">(선택)</span></label>
+          <input type="text" id="fSummary" placeholder="목록에 표시될 한 줄 요약">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label for="fTags">태그 <span style="font-weight:400; text-transform:none;">(쉼표 구분)</span></label>
+          <input type="text" id="fTags" placeholder="tech, python, web">
+        </div>
+        <div class="form-group" style="margin:0; display:flex; align-items:flex-end; padding-bottom:2px;">
+          <!-- 발행 여부는 상단 버튼으로 제어, 여기서는 숨김 -->
+        </div>
+      </div>
+
+      <!-- 컨텐츠 에디터 + 미리보기 -->
+      <div class="editor-body">
+        <div style="display:flex; flex-direction:column; overflow:hidden;">
+          <label style="flex-shrink:0; margin-bottom:6px;">마크다운</label>
+          <textarea id="fContent" placeholder="# 제목&#10;&#10;내용을 마크다운으로 작성하세요..." oninput="updatePreview()"></textarea>
+        </div>
+        <div style="display:flex; flex-direction:column; overflow:hidden;">
+          <p class="preview-pane-label" style="flex-shrink:0;">미리보기</p>
+          <div class="preview-box" id="preview"><span style="color:var(--muted); font-size:13px;">내용을 입력하면 여기에 미리보기가 표시됩니다.</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="../assets/js/config.js"></script>
+  <script src="../assets/js/auth.js"></script>
+  <script src="../assets/js/utils.js"></script>
+  <script src="../assets/js/github.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+  <script>
+    AUTH.requireAuth('login.html');
+    marked.setOptions({ breaks: true, gfm: true });
+
+    const editId = UTILS.param('id');  // 편집 모드면 포스트 ID
+    let slugEdited = false;
+
+    async function init() {
+      if (editId) {
+        document.getElementById('editorLabel').textContent = '포스트 편집';
+        document.title = `편집 — ${CONFIG.BLOG_TITLE}`;
+        try {
+          const { posts } = await GITHUB.getPosts(true);
+          const post = posts.find(p => p.id === editId);
+          if (!post) { alert('포스트를 찾을 수 없습니다.'); location.href = 'index.html'; return; }
+
+          document.getElementById('fTitle').value   = post.title;
+          document.getElementById('fSlug').value    = post.slug;
+          document.getElementById('fSummary').value = post.summary || '';
+          document.getElementById('fTags').value    = (post.tags || []).join(', ');
+          document.getElementById('fContent').value = post.content || '';
+          slugEdited = true;
+          updatePreview();
+        } catch (err) {
+          alert('불러오기 실패: ' + err.message);
+        }
+      } else {
+        document.title = `새 포스트 — ${CONFIG.BLOG_TITLE}`;
+      }
+    }
+
+    function onTitleInput() {
+      if (!slugEdited) {
+        document.getElementById('fSlug').value = UTILS.slugify(document.getElementById('fTitle').value);
+      }
+    }
+
+    document.getElementById('fSlug').addEventListener('input', () => { slugEdited = true; });
+
+    function updatePreview() {
+      const md = document.getElementById('fContent').value;
+      document.getElementById('preview').innerHTML = md
+        ? marked.parse(md)
+        : '<span style="color:var(--muted);font-size:13px;">내용을 입력하면 여기에 미리보기가 표시됩니다.</span>';
+    }
+
+    async function save(publish) {
+      const title   = document.getElementById('fTitle').value.trim();
+      const slug    = document.getElementById('fSlug').value.trim();
+      const summary = document.getElementById('fSummary').value.trim();
+      const tagsRaw = document.getElementById('fTags').value.trim();
+      const content = document.getElementById('fContent').value;
+
+      if (!title) { UTILS.msg('msg', '제목을 입력하세요.'); return; }
+
+      const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
+
+      const draftBtn   = document.getElementById('draftBtn');
+      const publishBtn = document.getElementById('publishBtn');
+      draftBtn.disabled = publishBtn.disabled = true;
+      document.getElementById('saveStatus').textContent = '저장 중...';
+      document.getElementById('msg').innerHTML = '';
+
+      try {
+        const data = { title, slug: slug || UTILS.slugify(title), summary, content, tags, published: publish };
+
+        if (editId) {
+          await GITHUB.updatePost(editId, data);
+        } else {
+          const created = await GITHUB.createPost(data);
+          // 생성 후 편집 모드로 URL 업데이트 (이중 저장 방지)
+          history.replaceState(null, '', `editor.html?id=${created.id}`);
+          document.getElementById('editorLabel').textContent = '포스트 편집';
+        }
+
+        document.getElementById('saveStatus').textContent = `저장됨 ${new Date().toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit'})}`;
+        UTILS.msg('msg', publish ? '발행되었습니다.' : '임시저장되었습니다.', 'success');
+      } catch (err) {
+        UTILS.msg('msg', `저장 실패: ${err.message}`);
+        document.getElementById('saveStatus').textContent = '';
+      } finally {
+        draftBtn.disabled = publishBtn.disabled = false;
+      }
+    }
+
+    // Ctrl+S 단축키
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        save(false);
+      }
+    });
+
+    init();
+  </script>
+</body>
+</html>

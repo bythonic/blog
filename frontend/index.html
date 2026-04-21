@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Blog</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="header-inner">
+        <a href="index.html" class="site-title" id="siteTitleLink">Blog</a>
+        <nav>
+          <a href="index.html">Home</a>
+          <a href="admin/login.html" id="adminLink">Admin</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div id="tagFilterBar" style="display:none; padding: 20px 0 0; font-size:13px; color:var(--muted);">
+        태그: <strong id="activeTagLabel"></strong>
+        &nbsp;<a href="index.html" style="color:var(--muted);">✕ 초기화</a>
+      </div>
+
+      <div class="post-list" id="postList">
+        <div class="loading">불러오는 중...</div>
+      </div>
+
+      <div id="pagination"></div>
+    </main>
+
+    <footer>
+      <p id="footerText"></p>
+    </footer>
+  </div>
+
+  <script src="assets/js/config.js"></script>
+  <script src="assets/js/auth.js"></script>
+  <script src="assets/js/utils.js"></script>
+  <script src="assets/js/github.js"></script>
+  <script>
+    // 제목 설정
+    document.getElementById('siteTitleLink').textContent = CONFIG.BLOG_TITLE;
+    document.title = CONFIG.BLOG_TITLE;
+    document.getElementById('footerText').textContent = `© ${new Date().getFullYear()} ${CONFIG.BLOG_TITLE}`;
+
+    // 관리자 로그인 상태면 대시보드 링크로 교체
+    if (AUTH.isLoggedIn()) {
+      const link = document.getElementById('adminLink');
+      link.href = 'admin/index.html';
+      link.textContent = 'Dashboard';
+    }
+
+    const tag         = UTILS.param('tag');
+    const currentPage = parseInt(UTILS.param('page') || '1', 10);
+
+    if (tag) {
+      document.getElementById('tagFilterBar').style.display = 'block';
+      document.getElementById('activeTagLabel').textContent = tag;
+    }
+
+    async function loadPosts() {
+      try {
+        const { posts: all } = await GITHUB.getPosts(false);
+
+        // 공개 포스트만, 태그 필터
+        let filtered = all.filter(p => p.published);
+        if (tag) filtered = filtered.filter(p => (p.tags || []).includes(tag));
+
+        // 날짜 내림차순
+        filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+        const total      = filtered.length;
+        const skip       = (currentPage - 1) * CONFIG.POSTS_PER_PAGE;
+        const pagePosts  = filtered.slice(skip, skip + CONFIG.POSTS_PER_PAGE);
+
+        renderPosts(pagePosts);
+        renderPagination(total, currentPage);
+      } catch (err) {
+        document.getElementById('postList').innerHTML =
+          '<div class="empty">포스트를 불러오지 못했습니다.<br><small style="color:var(--muted)">config.js의 GITHUB_OWNER / GITHUB_REPO 설정을 확인하세요.</small></div>';
+      }
+    }
+
+    function renderPosts(posts) {
+      const el = document.getElementById('postList');
+      if (!posts.length) {
+        el.innerHTML = '<div class="empty">아직 작성된 포스트가 없습니다.</div>';
+        return;
+      }
+      el.innerHTML = posts.map(p => {
+        const tags = (p.tags || []).map(t =>
+          `<a href="index.html?tag=${encodeURIComponent(t)}" class="tag">${UTILS.escapeHtml(t)}</a>`
+        ).join('');
+        return `
+          <div class="post-item">
+            <div class="post-date">${UTILS.formatDate(p.created_at)}</div>
+            <div class="post-body">
+              <div class="post-title">
+                <a href="post.html?slug=${encodeURIComponent(p.slug)}">${UTILS.escapeHtml(p.title)}</a>
+              </div>
+              ${p.summary ? `<p class="post-summary">${UTILS.escapeHtml(p.summary)}</p>` : ''}
+              ${tags ? `<div class="post-tags">${tags}</div>` : ''}
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    function renderPagination(total, page) {
+      const pages = Math.ceil(total / CONFIG.POSTS_PER_PAGE);
+      if (pages <= 1) return;
+      const el = document.getElementById('pagination');
+      let html = '<div class="pagination">';
+      html += `<button class="page-btn" ${page===1?'disabled':''} onclick="go(${page-1})">←</button>`;
+      for (let i = 1; i <= pages; i++) {
+        html += `<button class="page-btn${i===page?' active':''}" onclick="go(${i})">${i}</button>`;
+      }
+      html += `<button class="page-btn" ${page===pages?'disabled':''} onclick="go(${page+1})">→</button>`;
+      html += '</div>';
+      el.innerHTML = html;
+    }
+
+    function go(page) {
+      const q = new URLSearchParams();
+      q.set('page', page);
+      if (tag) q.set('tag', tag);
+      location.href = `index.html?${q}`;
+    }
+
+    loadPosts();
+  </script>
+</body>
+</html>

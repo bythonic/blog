@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Post</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="header-inner">
+        <a href="index.html" class="site-title" id="siteTitleLink">Blog</a>
+        <nav>
+          <a href="index.html">Home</a>
+          <a href="admin/login.html" id="adminLink">Admin</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="mainContent">
+      <div class="loading">불러오는 중...</div>
+    </main>
+
+    <footer>
+      <p id="footerText"></p>
+    </footer>
+  </div>
+
+  <script src="assets/js/config.js"></script>
+  <script src="assets/js/auth.js"></script>
+  <script src="assets/js/utils.js"></script>
+  <script src="assets/js/github.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+  <script>
+    document.getElementById('siteTitleLink').textContent = CONFIG.BLOG_TITLE;
+    document.getElementById('footerText').textContent    = `© ${new Date().getFullYear()} ${CONFIG.BLOG_TITLE}`;
+
+    if (AUTH.isLoggedIn()) {
+      const link = document.getElementById('adminLink');
+      link.href = 'admin/index.html';
+      link.textContent = 'Dashboard';
+    }
+
+    marked.setOptions({ breaks: true, gfm: true });
+
+    async function loadPost() {
+      const slug = UTILS.param('slug');
+      if (!slug) {
+        location.href = 'index.html';
+        return;
+      }
+
+      try {
+        const { posts } = await GITHUB.getPosts(false);
+        const post = posts.find(p => p.slug === slug && p.published);
+
+        if (!post) {
+          document.getElementById('mainContent').innerHTML =
+            '<div class="empty" style="margin-top:48px">포스트를 찾을 수 없습니다.<br><a href="index.html" style="color:var(--muted);font-size:13px">← 목록으로</a></div>';
+          return;
+        }
+
+        document.title = `${post.title} — ${CONFIG.BLOG_TITLE}`;
+
+        const tags = (post.tags || []).map(t =>
+          `<a href="index.html?tag=${encodeURIComponent(t)}" class="tag">${UTILS.escapeHtml(t)}</a>`
+        ).join('');
+
+        const editBtn = AUTH.isLoggedIn()
+          ? `<a href="admin/editor.html?id=${encodeURIComponent(post.id)}" class="btn btn-outline btn-sm">편집</a>`
+          : '';
+
+        document.getElementById('mainContent').innerHTML = `
+          <div class="post-header">
+            <h1>${UTILS.escapeHtml(post.title)}</h1>
+            <div class="post-meta">
+              <span>${UTILS.formatDate(post.created_at)}</span>
+              ${tags ? `<div class="post-tags">${tags}</div>` : ''}
+              ${editBtn}
+            </div>
+          </div>
+          <div class="post-content" id="postBody"></div>
+          <a href="index.html" class="back-link">← 목록으로</a>`;
+
+        // XSS 방지: marked로 렌더링
+        document.getElementById('postBody').innerHTML = marked.parse(post.content || '');
+      } catch (err) {
+        document.getElementById('mainContent').innerHTML =
+          `<div class="empty" style="margin-top:48px">불러오기 실패: ${UTILS.escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    loadPost();
+  </script>
+</body>
+</html>

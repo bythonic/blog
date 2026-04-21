@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard</title>
+  <link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body>
+  <div class="wrap">
+    <header class="admin-header">
+      <div class="admin-header-inner">
+        <a href="../index.html" class="admin-title" id="siteTitle">Blog</a>
+        <nav>
+          <a href="../index.html">블로그 보기</a>
+          <button class="btn btn-ghost btn-sm" onclick="AUTH.logout()">로그아웃</button>
+        </nav>
+      </div>
+    </header>
+
+    <div class="page-heading">
+      <h1>Posts</h1>
+      <a href="editor.html" class="btn btn-primary">+ 새 포스트</a>
+    </div>
+
+    <div id="msg"></div>
+
+    <div class="table-wrap" id="tableArea">
+      <div class="loading">불러오는 중...</div>
+    </div>
+
+    <div id="pagination"></div>
+  </div>
+
+  <script src="../assets/js/config.js"></script>
+  <script src="../assets/js/auth.js"></script>
+  <script src="../assets/js/utils.js"></script>
+  <script src="../assets/js/github.js"></script>
+  <script>
+    document.getElementById('siteTitle').textContent = CONFIG.BLOG_TITLE;
+    document.title = `Dashboard — ${CONFIG.BLOG_TITLE}`;
+
+    AUTH.requireAuth('login.html');
+
+    const PER_PAGE   = 20;
+    let allPosts     = [];
+    let currentPage  = 1;
+
+    async function loadPosts() {
+      try {
+        const { posts } = await GITHUB.getPosts(true);
+        allPosts = posts.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        renderTable();
+      } catch (err) {
+        document.getElementById('tableArea').innerHTML =
+          `<div class="empty">불러오기 실패: ${UTILS.escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    function renderTable() {
+      const total = allPosts.length;
+      const skip  = (currentPage - 1) * PER_PAGE;
+      const page  = allPosts.slice(skip, skip + PER_PAGE);
+
+      if (!total) {
+        document.getElementById('tableArea').innerHTML =
+          '<div class="empty">아직 포스트가 없습니다. 새 포스트를 작성하세요.</div>';
+        return;
+      }
+
+      const rows = page.map(p => `
+        <tr>
+          <td style="max-width:320px; word-break:break-word;">
+            <a href="../post.html?slug=${encodeURIComponent(p.slug)}" target="_blank"
+               style="font-weight:600; text-decoration:none;">${UTILS.escapeHtml(p.title)}</a>
+          </td>
+          <td style="white-space:nowrap; color:var(--muted);">${UTILS.formatDate(p.created_at)}</td>
+          <td>
+            <span class="status-badge ${p.published ? 'badge-published' : 'badge-draft'}">
+              ${p.published ? 'Published' : 'Draft'}
+            </span>
+          </td>
+          <td>
+            <div class="actions">
+              <a href="editor.html?id=${encodeURIComponent(p.id)}" class="btn btn-outline btn-sm">편집</a>
+              <button class="btn btn-danger btn-sm" onclick="confirmDelete('${p.id}', '${UTILS.escapeHtml(p.title).replace(/'/g,"\\'")}')">삭제</button>
+            </div>
+          </td>
+        </tr>`).join('');
+
+      document.getElementById('tableArea').innerHTML = `
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>제목</th>
+              <th>날짜</th>
+              <th>상태</th>
+              <th>작업</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+
+      renderPagination(total);
+    }
+
+    function renderPagination(total) {
+      const pages = Math.ceil(total / PER_PAGE);
+      if (pages <= 1) { document.getElementById('pagination').innerHTML = ''; return; }
+
+      let html = '<div class="pagination">';
+      html += `<button class="page-btn" ${currentPage===1?'disabled':''} onclick="goPage(${currentPage-1})">←</button>`;
+      for (let i = 1; i <= pages; i++) {
+        html += `<button class="page-btn${i===currentPage?' active':''}" onclick="goPage(${i})">${i}</button>`;
+      }
+      html += `<button class="page-btn" ${currentPage===pages?'disabled':''} onclick="goPage(${currentPage+1})">→</button>`;
+      html += '</div>';
+      document.getElementById('pagination').innerHTML = html;
+    }
+
+    function goPage(n) { currentPage = n; renderTable(); }
+
+    async function confirmDelete(id, title) {
+      if (!confirm(`"${title}" 포스트를 삭제하시겠습니까?`)) return;
+      document.getElementById('msg').innerHTML = '';
+      try {
+        await GITHUB.deletePost(id);
+        UTILS.msg('msg', '삭제되었습니다.', 'success');
+        await loadPosts();
+      } catch (err) {
+        UTILS.msg('msg', `삭제 실패: ${err.message}`);
+      }
+    }
+
+    loadPosts();
+  </script>
+</body>
+</html>
